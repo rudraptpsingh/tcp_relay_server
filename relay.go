@@ -3,7 +3,38 @@ package main
 import (
 	"fmt"
 	"net"
+	"strings"
+	"sync"
+	"time"
 )
+
+type RelayServer struct {
+	host  string
+	port  string
+	ln    net.Listener
+	rooms Rooms
+}
+
+type Room struct {
+	conn1          net.Conn
+	conn2          net.Conn
+	timeOfCreation time.Time
+}
+
+type Rooms struct {
+	roomMap map[string]Room
+	sync.Mutex
+}
+
+func NewRelayServer(host string, port string) *RelayServer {
+	return &RelayServer{
+		host: host,
+		port: port,
+		rooms: Rooms{
+			roomMap: make(map[string]Room),
+		},
+	}
+}
 
 func GetChannelForConnection(conn net.Conn) (ch chan []byte) {
 	ch = make(chan []byte, 1)
@@ -55,27 +86,60 @@ func SetupConnectionPipe(conn1 net.Conn, conn2 net.Conn) {
 	}
 }
 
-func CreateRelayServer() {
-	relay_server, err := net.Listen("tcp", ":1234")
+func (r *RelayServer) CreateRelayServer() {
+	ln, err := net.Listen("tcp", r.port)
 	if err != nil {
 		fmt.Errorf("Failed to create relay serve. Error: %s", err)
+		return
 	}
 
-	conns := make([]net.Conn, 2)
+	r.ln = ln
+}
 
-	defer relay_server.Close()
-	for i := 0; i < 2; i++ {
-		conns[i], err = relay_server.Accept()
+func (r *RelayServer) AcceptConnections() {
+	defer r.ln.Close()
+	for {
+		conn, err := r.ln.Accept()
 		if err != nil {
 			fmt.Errorf("Failed to accept connection. Error: %s", err)
 			continue
 		}
+
+		go r.CreateRoom(conn)
+	}
+}
+
+func (r *RelayServer) CreateRoom(conn net.Conn) {
+	code := make([]byte, 2048)
+	// Read the password from the connection
+	n, err := conn.Read(code)
+	if err != nil {
+		fmt.Errorf("Failed to read room code from connection. Error: %f", err)
+		return
 	}
 
-	// pipe both the client connections so that messages can be relayed
-	SetupConnectionPipe(conns[0], conns[1])
+	roomCode := strings.TrimSpace(string(code[:n]))
+
+	// Check if a room with the same password exists. If so, add the connection to the room.
+	r.rooms.Mutex.Lock()
+	if room, ok := r.rooms.roomMap[roomCode]; ok {
+		room.conn2 = conn
+		// notify both the connections that a room have been created.
+		room.conn1.Write([]byte("connected"))
+		room.conn2.Write([]byte("connected"))
+		r.rooms.Mutex.Unlock()
+		// now create a pipe between the two connections.
+		SetupConnectionPipe(room.conn1, room.conn2)
+		return
+	}
+
+	// Create a new room as no room exists with the given password.
+	r.rooms.roomMap[roomCode] = Room{conn1: conn, timeOfCreation: time.Now()}
+	r.rooms.Mutex.Unlock()
 }
 
 func main() {
-	CreateRelayServer()
+	relay_server := NewRelayServer("", ":1234")
+	relay_server.CreateRelayServer()
+	relay_server.AcceptConnections()
 }
