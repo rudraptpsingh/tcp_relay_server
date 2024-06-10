@@ -57,7 +57,7 @@ func StartChat(conn net.Conn, wg *sync.WaitGroup) {
 
 func main() {
 	// Create new client connction
-	conn, err := net.Dial("tcp", "127.0.0.1:1235")
+	conn, err := net.Dial("tcp", "127.0.0.1:9009")
 	if err != nil {
 		log.Fatalf("Failed to dial to the address. Error: %s", err)
 	}
