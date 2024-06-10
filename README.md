@@ -3,12 +3,12 @@ This project implements a TCP relay server. This server listens to connections a
 
 To start a TCP relay server, run
 ```
-go run relay.go
+go run relay/relay.go
 ```
 
 To start the client connections, run the following command in two terminals
 ```
-go run client.go
+go run client/client.go
 ```
 
 Enter the room code. This room code is shared between two users who want to exchange messages.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"strings"
 	"sync"
@@ -26,7 +27,7 @@ type Rooms struct {
 	sync.Mutex
 }
 
-func NewRelayServer(host string, port string) *RelayServer {
+func NewRelayServer(host, port string) *RelayServer {
 	return &RelayServer{
 		host: host,
 		port: port,
@@ -36,27 +37,26 @@ func NewRelayServer(host string, port string) *RelayServer {
 	}
 }
 
-func GetChannelForConnection(conn net.Conn) (ch chan []byte) {
-	ch = make(chan []byte, 1)
+func GetChannelForConnection(conn net.Conn) chan []byte {
+	ch := make(chan []byte, 10) // Use a buffered channel
 	go func() {
+		defer close(ch)
 		msg := make([]byte, 2048)
 		for {
 			n, err := conn.Read(msg)
 			if err != nil {
-				fmt.Errorf("Failed to read from connection. Error: %s", err)
+				log.Printf("Failed to read from connection. Error: %s", err)
 				return
 			}
-
 			ch <- msg[:n]
 		}
 	}()
 
-	return
+	return ch
 }
 
-func SetupConnectionPipe(conn1 net.Conn, conn2 net.Conn) {
-
-	fmt.Println("Setting up pipe b/w connections")
+func SetupConnectionPipe(conn1, conn2 net.Conn) {
+	log.Println("Setting up pipe between connections")
 	chan1 := GetChannelForConnection(conn1)
 	chan2 := GetChannelForConnection(conn2)
 	for {
@@ -69,7 +69,8 @@ func SetupConnectionPipe(conn1 net.Conn, conn2 net.Conn) {
 
 			_, err := conn2.Write(msg)
 			if err != nil {
-				fmt.Errorf("Failed to write to connection. Error: %s", err)
+				log.Printf("Failed to write to connection. Error: %s", err)
+				return
 			}
 
 		case msg := <-chan2:
@@ -80,7 +81,8 @@ func SetupConnectionPipe(conn1 net.Conn, conn2 net.Conn) {
 
 			_, err := conn1.Write(msg)
 			if err != nil {
-				fmt.Errorf("Failed to write to connection. Error: %s", err)
+				log.Printf("Failed to write to connection. Error: %s", err)
+				return
 			}
 		}
 	}
@@ -89,10 +91,8 @@ func SetupConnectionPipe(conn1 net.Conn, conn2 net.Conn) {
 func (r *RelayServer) CreateRelayServer() {
 	ln, err := net.Listen("tcp", r.port)
 	if err != nil {
-		fmt.Errorf("Failed to create relay serve. Error: %s", err)
-		return
+		log.Fatalf("Failed to create relay server. Error: %s", err)
 	}
-
 	r.ln = ln
 }
 
@@ -101,10 +101,9 @@ func (r *RelayServer) AcceptConnections() {
 	for {
 		conn, err := r.ln.Accept()
 		if err != nil {
-			fmt.Errorf("Failed to accept connection. Error: %s", err)
+			log.Printf("Failed to accept connection. Error: %s", err)
 			continue
 		}
-
 		go r.CreateRoom(conn)
 	}
 }
@@ -139,7 +138,7 @@ func (r *RelayServer) CreateRoom(conn net.Conn) {
 }
 
 func main() {
-	relay_server := NewRelayServer("", ":1234")
+	relay_server := NewRelayServer("", ":1235")
 	relay_server.CreateRelayServer()
 	relay_server.AcceptConnections()
 }
