@@ -138,7 +138,7 @@ func (r *RelayServer) CreateRoom(conn net.Conn) {
 }
 
 func main() {
-	relay_server := NewRelayServer("", ":1235")
+	relay_server := NewRelayServer("", ":9009")
 	relay_server.CreateRelayServer()
 	relay_server.AcceptConnections()
 }
